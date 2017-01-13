@@ -7,11 +7,12 @@ Function Gallery for Real-World DNA Sequence Problems.
 """
 import numpy as np
 import math
+import random
 
 # Print out lists.
 def prtout(text):
     for i in text:
-        print(i, end = ' ')
+        print(i)
 
 
 # DNA pattern to number
@@ -127,7 +128,6 @@ def entropy(DNA):
         chars = {'A':0, 'T':0, 'C':0, 'G':0}
         for genome in DNA:
             chars[genome[i]] += 1/denom
-        print(chars)
         for val in chars.values():
             val = round(val, 1)
             if val==0:
@@ -218,20 +218,6 @@ def profilemostk(DNA, k, profile):
     return DNA[maxidx:(maxidx+k)]
 
 
-# Return score of motif collection.
-def score(motifs):
-    k = len(motifs[0])
-    t = len(motifs)
-    scores = 0
-    for i in range(k):
-        chars = {'A':0, 'T':0, 'C':0, 'G':0}
-        for j in range(t):
-            char = motifs[j][i]
-            chars[char] += 1
-        scores += (t - max(chars.values()))
-    return scores
-
-
 # Return profile matrix of motif collection.
 # Columns represent ith genome position in the k-mer;
 # rows represent probability of 'A', 'C', 'G', 'T'.
@@ -248,6 +234,37 @@ def profile(motifs):
         for key, val in chars.items():
             mat[gdict[key]].append(val)
     return mat
+
+
+# Find concensus string (the most probable k-mer in the DNA string, judged by profile)
+def consensus(motifs):
+    k = len(motifs[0])
+    t = len(motifs)
+    cons = list()
+    for i in range(k):
+        chars = {'A':0, 'T':0, 'C':0, 'G':0}
+        for j in range(t):
+            char = motifs[j][i]
+            chars[char] += 1
+        v = list(chars.values())
+        k = list(chars.keys())
+        cons.append(k[v.index(max(v))])
+    cons = ''.join(cons)
+    return cons
+
+
+# Return score of motif collection.
+def score(motifs):
+    k = len(motifs[0])
+    t = len(motifs)
+    scores = 0
+    for i in range(k):
+        chars = {'A':0, 'T':0, 'C':0, 'G':0}
+        for j in range(t):
+            char = motifs[j][i]
+            chars[char] += 1
+        scores += (t - max(chars.values()))
+    return scores
 
 
 # Upgrade the profile() function, applying Laplace's Rule.
@@ -286,4 +303,105 @@ def greedymotif(DNA, k, laplace = True):
             motifs.append(profilemostk(DNA[j], k, pro))
         if score(motifs) < score(bestmotifs):
             bestmotifs = motifs
+    return bestmotifs
+
+
+# Search motif gallery using randomized algorithm.
+def randmotifs(DNA, k):
+    n = len(DNA[0])
+    motifs = []                     # Initialize motifs collection
+    for string in DNA:
+        i = random.randint(0, n-k)
+        motifs.append(string[i:(i+k)])
+    bestmotifs = motifs.copy()
+    minscore = score(bestmotifs)
+    #minscore = entropy(bestmotifs)
+    counter = 0
+    while True:
+        pro = laprofile(motifs)
+        motifs = []
+        for string in DNA:
+            motif = profilemostk(string, k, pro)
+            motifs.append(motif)
+        newscore = score(motifs)
+        #newscore = entropy(motifs)
+        if minscore > newscore:     # For one optimization, try to get min-scored motifs.
+            bestmotifs = motifs.copy()
+            minscore = newscore
+        else:
+            return bestmotifs
+
+
+# Refining functions for randmotifs - get better chance to reach 'global minimum'.
+def randsearch(DNA, k, rep = 1000):
+    i = 0
+    t = len(DNA)
+    bestmotifs = randmotifs(DNA, k)
+    minscore = score(bestmotifs)
+    while i < rep:
+        motifs = randmotifs(DNA, k)
+        newscore = score(motifs)
+        if minscore > newscore:
+            minscore = newscore
+            bestmotifs = motifs.copy()
+            print(minscore, i)
+        i += 1
+    return bestmotifs
+
+
+# Motif generator based on profile probabilities.
+# Not useful here; just to keep a reference.
+def RandProGen(profile):
+    k = len(profile[0])
+    t = len(profile)
+    string = []
+    probs = []
+    glist = ['A', 'C', 'G', 'T']
+    for j in range(k):
+        for i in range(t):
+            probs.append(profile[i][j])
+        string.append(np.random.choice(glist, p = probs))
+    return ''.join(string)
+
+
+# Gibbs sampler which optimizes only 1 motif, instead of entire motif colelction.
+def GibbsSampler(DNA, k, N):
+    n = len(DNA[0])
+    t = len(DNA)
+    motifs = []
+    for string in DNA:
+        i = random.randint(0, n-k)
+        motifs.append(string[i:(i+k)])
+    bestmotifs = motifs.copy()
+    minscore = score(bestmotifs)
+    for rep in range(N):
+        i = random.randint(0, t-1)
+        cache = motifs.copy()
+        cache.pop(i)
+        pro = profile(cache)
+        rand = random.randint(0, n-k)
+        motif = DNA[i][rand:(rand+k)]
+        motifs[i] = motif
+        newscore = score(motifs)
+        if minscore > newscore:
+            bestmotifs = motifs.copy()
+            minscore = newscore
+            print(minscore, i)
+    return bestmotifs
+
+
+# Refining functions for GibbsSampler - get better chance to reach 'global minimum'.
+def randGibbs(DNA, k, N, rep = 20):
+    i = 0
+    t = len(DNA)
+    bestmotifs = GibbsSampler(DNA, k, N)
+    minscore = score(bestmotifs)
+    while i < rep:
+        motifs = GibbsSampler(DNA, k, N)
+        newscore = score(motifs)
+        if minscore > newscore:
+            minscore = newscore
+            bestmotifs = motifs.copy()
+            print(minscore, i)
+        i += 1
     return bestmotifs
